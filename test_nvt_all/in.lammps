@@ -1,0 +1,96 @@
+#-----------------Initialization-----------------------------------------
+units 		metal
+dimension	3
+boundary	p p p	
+atom_style	atomic
+
+timestep 	0.001
+#0.001 pico seconds = 1 femto second
+
+read_data 	datafile
+
+# ------------------------ FORCE FIELDS ---------------------------------------------
+pair_style	meam	
+pair_coeff	* * Fe3C_library_Liyanage_2014.meam Fe C Fe3C_Liyanage_2014.meam Fe C
+neighbor	0.05 bin 
+neigh_modify	delay 0 every 1 check yes
+
+# -----------------------EQUILIBRATION-----------------------------------------------
+reset_timestep	0
+
+min_style	cg
+fix		1 all box/relax iso 0.0 vmax 0.001
+minimize	1e-25 1e-25 100000 1000000
+unfix		1
+
+variable	nst equal "step"
+variable	temp equal 150 
+variable	e1 equal "pe"
+variable	e2 equal "ke"
+variable	e3 equal "etotal"
+
+velocity 	all create 20 12345 mom yes rot no
+fix		2 all nvt temp 20 ${temp} $(1000*dt)
+fix     	3 all print 1000 "${nst} ${temp} ${e1} ${e2} ${e3}" file eng_data.txt screen no
+
+thermo 		1000
+thermo_style 	custom step temp lx ly lz press pxx pyy pzz ke pe etotal
+
+run 		40000 #Run for 40 picoseconds
+unfix		3
+#unfix		2
+# -----------------Store final cell length for strain calculations------------------------
+
+variable 	tmp equal "lz"
+variable 	Lz0 equal ${tmp}
+print 		"Initial Length, L0: ${Lz0}"
+variable	txA equal "lx*ly"
+variable	xA equal ${txA}
+
+#-------------------------REGIONS & VARIABLES-----------------------------------------
+variable 	bothi equal "v_Lz0/6"
+variable	toplo equal "v_Lz0-v_bothi"
+region		bottom block INF INF INF INF 0.0 ${bothi} units box
+region		top block INF INF INF INF ${toplo} INF units box
+region		middle block INF INF INF INF ${bothi} ${toplo} units box
+
+group		grest region bottom
+group		gmove region top
+group 		mid region middle
+group		tempstat union grest mid
+
+
+variable 	srate equal 1e8
+variable 	srate1 equal "v_srate / 1.0e12"
+variable	vel equal "v_srate1*v_Lz0"
+
+compute		midT mid temp
+compute 	Fz grest property/atom fz
+compute 	FZ grest reduce sum c_Fz
+
+variable 	strain equal "(lz - v_Lz0)/v_Lz0"
+variable 	p1 equal "v_strain"
+variable 	p2 equal "-pxx/10000"
+variable 	p3 equal "-pyy/10000"
+variable 	p4 equal "-pzz/10000" 
+variable 	p5 equal "-c_FZ/v_xA*160.21766" 
+variable	mT equal "c_midT"
+
+# ----------------------------DEFORMATION--------------------------------------------------
+reset_timestep	0
+
+thermo 		1000
+thermo_style	custom step c_midT lz v_p1 v_p5 v_p2 v_p3 v_p4 press vol ke pe etotal
+
+dump 	 	1 all custom 1000 dump.tensile id type x y z
+
+fix		4 grest move linear 0 0 0 units box
+#fix		4 gmove move linear 0 0 0.01 units box
+fix		3 gmove deform 1 z vel 0.1 units box remap x
+#fix		2 mid nvt temp ${temp} ${temp} $(1000*dt)
+fix     	5 all print 1000 "${nst} ${mT} ${p1} ${p5} ${p4}" file tensile_data.txt screen no
+
+run 		100000 #every 1 "velocity grest set 0 0 0"
+#run 		5000000 #every 1 "velocity grest set 0 0 0"
+
+print 'All Done'
