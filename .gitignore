@@ -1,0 +1,30 @@
+# Compiled and temporary files
+*.o
+*.mod
+*.a
+*.so
+*.dylib
+*.exe
+
+# LAMMPS files
+*.restart
+*.cfg
+*.h5
+
+# Build directories
+build/
+CMakeFiles/
+cmake_install.cmake
+Makefile
+CMakeCache.txt
+
+# Editor and IDE files
+*.swp
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# Python cache (if using Python scripts)
+__pycache__/
+*.py[cod]
